@@ -4,9 +4,9 @@ A small, self-hosted status page for a Linux home server. One page shows host lo
 
 > ⚠️ **Never expose this dashboard to the internet.** No port forwarding, no public reverse proxy, no Cloudflare Tunnel. It can stop your containers (including DNS and VPN ones). Run it on your LAN and/or over a private VPN like Tailscale only. See [Security model](#security-model).
 
-<!-- Screenshot placeholder: add docs/screenshot.png and uncomment the next line
+
 ![Dashboard screenshot](docs/screenshot.png)
--->
+
 *(Screenshot coming soon.)*
 
 ## Features
