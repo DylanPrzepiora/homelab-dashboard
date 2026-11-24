@@ -7,7 +7,6 @@ A small, self-hosted status page for a Linux home server. One page shows host lo
 
 ![Dashboard screenshot](docs/screenshot.png)
 
-*(Screenshot coming soon.)*
 
 ## Features
 
