@@ -1,0 +1,43 @@
+# Copy to config.yaml and edit. config.yaml is git-ignored.
+# Used by BOTH the dashboard container (mounted read-only) and the host SMART collector
+# (host/install.sh copies it to /etc/dashboard/config.yaml; re-run it after editing smart.disks).
+
+# Name shown in the page header and browser tab.
+title: "My Homelab"
+
+# Containers whose name/image/project matches this regex (case-insensitive) ask for confirmation
+# before stop/restart, because stopping them can cut off DNS or remote access.
+confirm_before_stop: "pi-?hole|adguard|cloudflared|tailscale|wireguard"
+
+# The dashboard's own containers are protected from stop/restart. Match your compose project and
+# container_name values (the defaults match the docker-compose.yml in this repo).
+self:
+  project: dashboard
+  container_names: [dashboard, dashboard-socket-proxy]
+
+# Extra filesystems to show next to "/". `path` is the location INSIDE the container; the matching
+# bind mount lives in docker-compose.yml (DATA_PATH in .env mounts at /host/data).
+mounts:
+  - label: "data"
+    path: /host/data
+
+# md (Linux software) RAID. Remove this block, or set device: "", if the host has no md RAID: the RAID
+# section then hides itself. NOTE: if RAID_DEVICE is set in .env, that value wins (compose needs the
+# same name for its mount), so keep the two in sync.
+raid:
+  device: md0
+
+smart:
+  stale_after_minutes: 30      # older than this and the dashboard flags the data as STALE
+  temp_warn_c: 55
+  # One entry per WHOLE disk, by its /dev/disk/by-id name (see docs/smart-setup.md).
+  disks:
+    - id: ata-EXAMPLE_VENDOR_MODEL_SERIAL0001       # a SATA disk
+      label: "Data disk 1"
+    - id: nvme-EXAMPLE_NVME_MODEL_SERIAL0002        # an NVMe disk (needs no `type`)
+      label: "System NVMe"
+    # A USB disk behind a bridge usually needs `type`; skip_standby avoids spinning a sleeping disk up.
+    # - id: usb-EXAMPLE_USB_BRIDGE_SERIAL0003-0:0
+    #   label: "USB backup disk"
+    #   type: sat
+    #   skip_standby: true

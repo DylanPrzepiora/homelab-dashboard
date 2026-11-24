@@ -1,0 +1,25 @@
+# secrets and local configuration
+.env
+.env.*
+!.env.example
+config.yaml
+*.pem
+*.key
+*.crt
+certs/
+
+# runtime data
+data/
+*.log
+smart.json
+smart.json.tmp
+
+# python / editors / OS
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+*.swp
+.DS_Store

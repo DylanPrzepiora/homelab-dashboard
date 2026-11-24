@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homelab Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="login" hidden>
+  <form id="loginform" class="card login">
+    <h1 class="sitetitle">Homelab Dashboard</h1>
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required autofocus>
+    <button class="btn primary">Log in</button>
+    <p id="loginerr" class="err"></p>
+  </form>
+</main>
+<div id="app" hidden>
+  <header>
+    <h1 class="sitetitle">Homelab Dashboard</h1>
+    <span id="updated" class="muted"></span>
+    <button id="logout" class="btn">Log out</button>
+  </header>
+  <div id="alerts"></div>
+  <section><h2>Host</h2><div id="host" class="grid"></div></section>
+  <section id="raidsec" hidden><h2>RAID <span id="raidname" class="muted"></span></h2><div id="raid"></div></section>
+  <section><h2>Disk health</h2><div id="smart"></div></section>
+  <section><h2>Containers</h2><div id="containers"></div></section>
+  <section><h2>Recent actions</h2><div id="audit" class="card mono small"></div></section>
+</div>
+<dialog id="dlg"><h3 id="dlgtitle"></h3><pre id="dlgbody"></pre><div class="row"><button class="btn" id="dlgcancel">Close</button><button class="btn danger" id="dlgok" hidden>Confirm</button></div></dialog>
+<script src="app.js"></script>
+</body>
+</html>

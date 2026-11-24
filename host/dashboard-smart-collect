@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Run as root by dashboard-smart.timer. Writes smart.json for the dashboard container (which mounts it read-only).
+
+Which disks to read comes from the `smart.disks` list in the config file (default /etc/dashboard/config.yaml,
+installed root-owned by host/install.sh). Disks are addressed by their stable /dev/disk/by-id name, never
+by sdX letter. The current kernel name is recorded only so the dashboard can map RAID members (sdb1) back
+to a by-id name.
+
+Because this runs as root, everything read from the config is validated before use and smartctl is
+always called with an argument list (no shell).
+
+Environment overrides (mainly for testing): DASHBOARD_CONFIG, DASHBOARD_SMART_OUT, DASHBOARD_BY_ID_DIR.
+"""
+import json, os, re, subprocess, sys, time
+
+CONFIG = os.environ.get("DASHBOARD_CONFIG", "/etc/dashboard/config.yaml")
+OUT = os.environ.get("DASHBOARD_SMART_OUT", "/var/lib/dashboard/smart.json")
+BY_ID = os.environ.get("DASHBOARD_BY_ID_DIR", "/dev/disk/by-id")
+ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,200}$")      # a file name, no slashes
+TYPE_RE = re.compile(r"^[a-z0-9,+]{1,30}$")                      # smartctl -d value: sat, nvme, usbjmicron, sat,12 ...
+
+
+def fail(msg):
+    print(f"dashboard-smart-collect: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load_disks():
+    try:
+        import yaml
+    except ImportError:
+        fail("python3-yaml is missing (Debian/Ubuntu: sudo apt install python3-yaml)")
+    try:
+        with open(CONFIG) as f:
+            cfg = yaml.safe_load(f) or {}
+    except OSError as e:
+        fail(f"cannot read {CONFIG}: {e.strerror}. Copy config.example.yaml there (see docs/smart-setup.md)")
+    except yaml.YAMLError as e:
+        fail(f"{CONFIG} is not valid YAML: {e}")
+    disks = (cfg.get("smart") or {}).get("disks") if isinstance(cfg, dict) else None
+    if not isinstance(disks, list) or not disks:
+        fail(f"no disks listed under smart.disks in {CONFIG}")
+    out = []
+    for i, d in enumerate(disks, 1):
+        if isinstance(d, str):
+            d = {"id": d}
+        if not isinstance(d, dict) or not ID_RE.match(str(d.get("id", ""))):
+            fail(f"smart.disks entry {i}: 'id' must be a name from /dev/disk/by-id (no slashes)")
+        t = d.get("type")
+        if t is not None and not TYPE_RE.match(str(t)):
+            fail(f"smart.disks entry {i}: invalid 'type' {t!r} (examples: sat, nvme, usbjmicron)")
+        out.append({"id": str(d["id"]), "label": str(d.get("label") or "")[:60] or None,
+                    "type": str(t) if t else None, "skip_standby": bool(d.get("skip_standby", False))})
+    return out
+
+
+def attr(table, i):
+    for a in table:
+        if a.get("id") == i:
+            return a.get("raw", {}).get("value")
+    return None
+
+
+def collect(path, dtype, skip_standby):
+    cmd = ["smartctl", "-j", "-a"]
+    if dtype:
+        cmd += ["-d", dtype]
+    if skip_standby:
+        cmd += ["-n", "standby"]      # do not spin up a sleeping disk just to read it
+    r = subprocess.run(cmd + [path], capture_output=True, text=True, timeout=60)
+    try:
+        j = json.loads(r.stdout)      # exit status is a bitmask, not pass/fail: always parse the JSON
+    except ValueError:
+        return {"error": (r.stderr.strip() or "smartctl produced no JSON (is smartmontools installed?)")[:200]}
+    msgs = [m["string"] for m in j.get("smartctl", {}).get("messages", []) if m.get("severity") == "error"]
+    if skip_standby and any("STANDBY" in m.upper() for m in
+                            [m.get("string", "") for m in j.get("smartctl", {}).get("messages", [])]):
+        return {"standby": True}
+    tbl = j.get("ata_smart_attributes", {}).get("table", [])
+    nvme = j.get("nvme_smart_health_information_log", {})
+    return {
+        "model": j.get("model_name"), "serial": j.get("serial_number"), "size_bytes": j.get("user_capacity", {}).get("bytes"),
+        "passed": j.get("smart_status", {}).get("passed"),     # None = the disk/bridge did not answer: shown as "unknown"
+        "temp_c": j.get("temperature", {}).get("current"),
+        "power_on_hours": j.get("power_on_time", {}).get("hours"),
+        "reallocated": attr(tbl, 5), "pending": attr(tbl, 197),
+        "uncorrectable": attr(tbl, 198) if tbl else nvme.get("media_errors"),
+        "error": "; ".join(msgs) or None,
+    }
+
+
+def main():
+    disks = []
+    for c in load_disks():
+        link = os.path.join(BY_ID, c["id"])
+        d = {"id": c["id"], "label": c["label"], "type": c["type"], "dev": None}
+        if re.search(r"-part\d+$", c["id"]):
+            d["error"] = "this looks like a partition; list the whole disk"
+        elif not os.path.exists(link):
+            d["error"] = "not found in /dev/disk/by-id (wrong id, or the disk was removed/replaced)"
+        else:
+            d["dev"] = os.path.basename(os.path.realpath(link))
+            try:
+                d.update(collect(link, c["type"], c["skip_standby"]))
+            except Exception as e:
+                d["error"] = f"{type(e).__name__}: {e}"[:200]
+        disks.append(d)
+
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    tmp = OUT + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump({"schema": 1, "generated": time.time(), "disks": disks}, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, OUT)      # atomic: the container never sees a half-written file
+
+
+main()

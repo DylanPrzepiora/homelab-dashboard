@@ -1,0 +1,7 @@
+# Optional add-on for hosts with md (mdadm) software RAID. Enable by uncommenting COMPOSE_FILE and
+# RAID_DEVICE in .env. Read-only: the dashboard only reads these files.
+services:
+  dashboard:
+    volumes:
+      - /proc/mdstat:/host/mdstat:ro
+      - /sys/block/${RAID_DEVICE:-md0}/md:/host/md:ro

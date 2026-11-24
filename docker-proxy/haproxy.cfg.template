@@ -1,0 +1,34 @@
+# Strict allow-list for the Docker API. Replaces the stock tecnativa template, whose
+# CONTAINERS=1 + POST=1 combination would also allow container create, exec and delete.
+# Allowed: list/inspect/stats/logs (GET) and start/stop/restart (POST). Everything else is denied.
+global
+    log stdout format raw daemon warning
+    maxconn 200
+
+defaults
+    mode http
+    log global
+    option httplog
+    option dontlognull
+    timeout http-request 10s
+    timeout connect 5s
+    timeout client 60s
+    timeout server 60s
+    errorfile 403 /usr/local/etc/haproxy/errors/403.http
+    errorfile 503 /usr/local/etc/haproxy/errors/503.http
+
+backend dockerbackend
+    server dockersocket /var/run/docker.sock
+
+frontend dockerfrontend
+    bind ${BIND_CONFIG}
+    acl m_get  method GET
+    acl m_post method POST
+    acl p_list path,url_dec -m reg -i ^(/v[0-9.]+)?/containers/json$
+    acl p_read path,url_dec -m reg -i ^(/v[0-9.]+)?/containers/[a-z0-9][a-z0-9_.-]*/(json|stats|logs)$
+    acl p_act  path,url_dec -m reg -i ^(/v[0-9.]+)?/containers/[a-z0-9][a-z0-9_.-]*/(start|stop|restart)$
+    http-request allow if m_get p_list
+    http-request allow if m_get p_read
+    http-request allow if m_post p_act
+    http-request deny
+    default_backend dockerbackend
